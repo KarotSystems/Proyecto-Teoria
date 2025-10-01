@@ -66,7 +66,7 @@ def abrir_archivo():
     errores = []
 
     for i, linea in enumerate(lineas, start=1):
-        tokens = re.findall(r"[a-zA-Z_]\w*|\d+(\.\d+)?|==|>=|<=|[+\-*/%=<>(){};]", linea)
+        tokens = re.findall(r"[a-zA-Z_]\w*|\d+(?:\.\d+)?|==|>=|<=|[+\-*/%=<>(){};]", linea)
         for token in tokens:
             tipo = clasificar_token(token)
             if tipo == "Error Léxico":
