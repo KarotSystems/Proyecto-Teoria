@@ -1,5 +1,5 @@
 import tkinter as tk  
-from tkinter import filedialog, colorchooser, messagebox  
+from tkinter import filedialog, colorchooser, messagebox, ttk
 import json  
 import os
 import re
@@ -61,53 +61,103 @@ def abrir_archivo():
     with open(ruta, "r", encoding="utf-8") as archivo:
         lineas = archivo.readlines()
 
-    salida.delete("1.0", tk.END)
+    # Limpiar tablas
+    for tabla in [tabla_texto, tabla_tokens, tabla_errores]:
+        for item in tabla.get_children():
+            tabla.delete(item)
+
     resumen = {}
     errores = []
 
     for i, linea in enumerate(lineas, start=1):
+        # Tabla 1: mostrar el texto original
+        tabla_texto.insert("", tk.END, values=(i, linea.strip()))
+
         tokens = re.findall(r"[a-zA-Z_]\w*|\d+(?:\.\d+)?|==|>=|<=|[+\-*/%=<>(){};]", linea)
         for token in tokens:
             tipo = clasificar_token(token)
             if tipo == "Error Léxico":
-                errores.append(f"Línea {i}: Token inválido '{token}'")
+                errores.append((i, token))
             else:
-                resumen[tipo] = resumen.get(tipo, {})
-                resumen[tipo][token] = resumen[tipo].get(token, 0) + 1
+                # Tabla 2: mostrar tokens válidos
+                tabla_tokens.insert("", tk.END, values=(i, token, tipo))
 
-    if errores:
-        salida.insert(tk.END, "Errores léxicos encontrados:\n")
-        for err in errores:
-            salida.insert(tk.END, err + "\n")
-    else:
-        salida.insert(tk.END, "Tokens válidos encontrados:\n")
-        for tipo, tokens in resumen.items():
-            for token, cantidad in tokens.items():
-                salida.insert(tk.END, f"{token:<10} {tipo:<20} {cantidad}\n")
+    # Tabla 3: mostrar errores
+    for linea, token in errores:
+        tabla_errores.insert("", tk.END, values=(linea, token, "Error Léxico"))
 
 def guardar_archivo():
     archivo = filedialog.asksaveasfilename(defaultextension=".txt")
     if archivo:
-        contenido = salida.get("1.0", tk.END)
         with open(archivo, "w", encoding="utf-8") as f:
-            f.write(contenido)
+            f.write("=== TOKENS VÁLIDOS ===\n")
+            for item in tabla_tokens.get_children():
+                linea, token, tipo = tabla_tokens.item(item, "values")
+                f.write(f"Línea {linea}: {token} ({tipo})\n")
+
+            f.write("\n=== ERRORES ===\n")
+            for item in tabla_errores.get_children():
+                linea, token, tipo = tabla_errores.item(item, "values")
+                f.write(f"Línea {linea}: {token} ({tipo})\n")
+
         messagebox.showinfo("Guardado", "Archivo guardado correctamente.")
 
 ## Main ##
 root = tk.Tk()
 root.title("Analizador Léxico")
-root.geometry("600x400")
+root.geometry("900x600")
 
 cargar_config()
 
 tk.Label(root, text="Bienvenido, Analizador Léxico", font=("Arial", 16, "bold")).pack(pady=10)
 
-# Botones
-abrir = tk.Button(root, text="Abrir", command = abrir_archivo).pack(pady=10)
-guardar = tk.Button(root, text="Guardar", command = guardar_archivo).pack(pady=10)
+#Crear barra de menú
+menubar = tk.Menu(root)  
+root.config(menu=menubar)  
+
+#Archivo
+archivo_menu = tk.Menu(menubar, tearoff=0)
+archivo_menu.add_command(label = "Abrir", command = abrir_archivo)
+archivo_menu.add_command(label = "Guardar", command = guardar_archivo)
+menubar.add_cascade(label = "Archivo", menu = archivo_menu)
 
 # Área de texto para mostrar resultados
-salida = tk.Text(root, wrap="word", font=("Arial", config["tamaño_fuente"]))
-salida.pack(expand=True, fill="both", padx=10, pady=10)
+# Tablas
+notebook = ttk.Notebook(root)
+notebook.pack(expand=True, fill="both", padx=10, pady=10)
+
+# Tabla 1: Texto original
+frame1 = ttk.Frame(notebook)
+notebook.add(frame1, text="Texto Original")
+tabla_texto = ttk.Treeview(frame1, columns=("Línea", "Texto"), show="headings", height=15)
+tabla_texto.heading("Línea", text="Línea")
+tabla_texto.heading("Texto", text="Texto")
+tabla_texto.column("Línea", width=60, anchor="center")
+tabla_texto.column("Texto", width=700, anchor="w")
+tabla_texto.pack(expand=True, fill="both")
+
+# Tabla 2: Tokens válidos
+frame2 = ttk.Frame(notebook)
+notebook.add(frame2, text="Tokens")
+tabla_tokens = ttk.Treeview(frame2, columns=("Línea", "Token", "Tipo"), show="headings", height=15)
+tabla_tokens.heading("Línea", text="Línea")
+tabla_tokens.heading("Token", text="Token")
+tabla_tokens.heading("Tipo", text="Tipo")
+tabla_tokens.column("Línea", width=60, anchor="center")
+tabla_tokens.column("Token", width=150, anchor="center")
+tabla_tokens.column("Tipo", width=200, anchor="center")
+tabla_tokens.pack(expand=True, fill="both")
+
+# Tabla 3: Errores
+frame3 = ttk.Frame(notebook)
+notebook.add(frame3, text="Errores")
+tabla_errores = ttk.Treeview(frame3, columns=("Línea", "Token", "Descripción"), show="headings", height=15)
+tabla_errores.heading("Línea", text="Línea")
+tabla_errores.heading("Token", text="Token")
+tabla_errores.heading("Descripción", text="Descripción")
+tabla_errores.column("Línea", width=60, anchor="center")
+tabla_errores.column("Token", width=150, anchor="center")
+tabla_errores.column("Descripción", width=300, anchor="w")
+tabla_errores.pack(expand=True, fill="both")
 
 root.mainloop()
