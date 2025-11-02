@@ -28,6 +28,8 @@ def clasificar_token(token):
         return "Número"
     elif re.fullmatch(r"[a-zA-Z_]\w*", token):
         return "Identificador"
+    elif re.fullmatch(r'"[^"]*"', token):
+        return "Cadena"
     else:
         return "Error Léxico"
 
@@ -49,19 +51,20 @@ def analizar_contenido(texto):
         if not linea.strip():
             continue
         tabla_texto.insert("", tk.END, values=(i, linea.strip()))
-        tokens = re.findall(r"[a-zA-Z_]\w*|\d+(?:\.\d+)?|==|!=|<=|>=|[+\-*/%=<>(){},;]", linea)
+
+        # Detectar TODO (tokens válidos + inválidos)
+        tokens = re.findall(r'[a-zA-Z_]\w*|\d+(?:\.\d+)?|==|!=|<=|>=|[+\-*/%=<>(){},;"$@#]', linea)
+
         for token in tokens:
             tipo = clasificar_token(token)
             if tipo == "Error Léxico":
                 errores_lexicos.append((i, token))
+                tabla_errores.insert("", tk.END, values=(i, token, "Error Léxico"))
             else:
                 tokens_globales.append((i, token, tipo))
                 tabla_tokens.insert("", tk.END, values=(i, token, tipo))
 
-    for linea, token in errores_lexicos:
-        tabla_errores.insert("", tk.END, values=(linea, token, "Error Léxico"))
-
-    #Análisis Sintáctico Y Semántico
+    #Análisis Sintáctico y Semántico
     for i, linea in enumerate(lineas, start=1):
         codigo = linea.strip()
         if not codigo:
