@@ -2,4 +2,4 @@
 
 Trabajo en Equipo:
 Andre Velasco - 1546124
-Pablo Pastor - 
+Pablo Pastor - 1596524
