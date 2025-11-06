@@ -1,0 +1,8 @@
+entero x = 0
+cadena a = "Hola"
+enterro y = 1
+
+entero z = a*x
+
+mientras(x = verdadero){ x  + 1}s
+
