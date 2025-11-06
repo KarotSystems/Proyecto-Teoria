@@ -45,17 +45,43 @@ def analizar_contenido(texto):
     tokens_globales = []
     variables_declaradas = set()
     errores_sintacticos = []
+    pila_llaves = []  # Pila para controlar las llaves
 
-    #Analisis lexico
+    #Analisis lexico - CORREGIDO
     for i, linea in enumerate(lineas, start=1):
-        if not linea.strip():
+        linea_original = linea.strip()
+        if not linea_original:
             continue
-        tabla_texto.insert("", tk.END, values=(i, linea.strip()))
+            
+        # QUITAR COMENTARIOS antes de analizar
+        linea_sin_comentarios = re.sub(r'//.*$', '', linea_original).strip()
+        if not linea_sin_comentarios:
+            continue
+            
+        tabla_texto.insert("", tk.END, values=(i, linea_original))
 
-        # Detectar TODO (tokens válidos + inválidos)
-        tokens = re.findall(r'[a-zA-Z_]\w*|\d+(?:\.\d+)?|==|!=|<=|>=|[+\-*/%=<>(){},;"$@#]', linea)
-
+        # MEJOR DETECCIÓN DE TOKENS
+        # Primero extraemos las cadenas entre comillas para no dividirlas
+        linea_temp = linea_sin_comentarios
+        cadenas = re.findall(r'"[^"]*"', linea_temp)
+        for cadena in cadenas:
+            linea_temp = linea_temp.replace(cadena, " CADENA_TEMP ", 1)
+        
+        # Ahora tokenizamos el resto
+        tokens = re.findall(r'[a-zA-Z_]\w*|\d+\.\d+|\d+|==|!=|<=|>=|[+\-*/%=<>(){},;]', linea_temp)
+        
+        # Reinsertamos las cadenas
+        tokens_finales = []
+        cadena_index = 0
         for token in tokens:
+            if token == "CADENA_TEMP":
+                if cadena_index < len(cadenas):
+                    tokens_finales.append(cadenas[cadena_index])
+                    cadena_index += 1
+            else:
+                tokens_finales.append(token)
+
+        for token in tokens_finales:
             tipo = clasificar_token(token)
             if tipo == "Error Léxico":
                 errores_lexicos.append((i, token))
@@ -66,40 +92,103 @@ def analizar_contenido(texto):
 
     #Análisis Sintáctico y Semántico
     for i, linea in enumerate(lineas, start=1):
-        codigo = linea.strip()
+        linea_original = linea.strip()
+        if not linea_original:
+            continue
+            
+        # QUITAR COMENTARIOS para análisis sintáctico
+        codigo = re.sub(r'//.*$', '', linea_original).strip()
         if not codigo:
             continue
 
-        # Reglas básicas de validación
-        if re.match(r"^(entero|decimal|booleano|cadena)\s+[a-zA-Z_]\w*\s*(=\s*[\w\d\+\-\*/]+)?;$", codigo):
+        # --- DETECCIÓN DE LLAVES ---
+        # Contar llaves que abren
+        llaves_abrir = codigo.count('{')
+        for _ in range(llaves_abrir):
+            pila_llaves.append('{')
+        
+        # Contar llaves que cierran
+        llaves_cerrar = codigo.count('}')
+        for _ in range(llaves_cerrar):
+            if pila_llaves:
+                pila_llaves.pop()
+            else:
+                errores_sintacticos.append((i, codigo, "Llave de cierre '}' sin apertura"))
+
+        resultado = ""
+
+        # Reglas mejoradas
+        if re.match(r"^(entero|decimal|booleano)\s+[a-zA-Z_]\w*\s*(=\s*[^;]+)?;$", codigo):
             nombre = re.findall(r"[a-zA-Z_]\w*", codigo)[1]
             variables_declaradas.add(nombre)
             resultado = "Declaración de variable válida"
+
+        elif re.match(r'^cadena\s+[a-zA-Z_]\w*\s*=\s*"[^"]*";$', codigo):
+            nombre = re.findall(r"[a-zA-Z_]\w*", codigo)[1]
+            variables_declaradas.add(nombre)
+            resultado = "Declaración de cadena válida"
+
+        elif re.match(r"^cadena\s+[a-zA-Z_]\w*\s*;$", codigo):
+            nombre = re.findall(r"[a-zA-Z_]\w*", codigo)[1]
+            variables_declaradas.add(nombre)
+            resultado = "Declaración de cadena (sin asignación) válida"
+
         elif re.match(r"^si\s*\(.*\)\s*\{", codigo):
             resultado = "Estructura condicional (si) detectada"
+
         elif re.match(r"^sino\s*\{", codigo):
             resultado = "Bloque 'sino' detectado"
+
         elif re.match(r"^mientras\s*\(.*\)\s*\{", codigo):
             resultado = "Bucle 'mientras' detectado"
-        elif re.match(r"^(entero|decimal|booleano|cadena)\s+[a-zA-Z_]\w*\s*\(.*\)\s*\{", codigo):
+
+        elif re.match(r"^funcion\s+(entero|decimal|booleano|cadena)\s+[a-zA-Z_]\w*\s*\(.*\)\s*\{", codigo):
             resultado = "Declaración de función detectada"
-        elif re.match(r"^[a-zA-Z_]\w*\s*=\s*.*;$", codigo):
+
+        elif re.match(r"^[a-zA-Z_]\w*\s*=\s*[^;]+;$", codigo):
             nombre = codigo.split("=")[0].strip()
             if nombre not in variables_declaradas:
                 errores_sintacticos.append((i, codigo, "Variable no declarada antes de su uso"))
                 continue
-            resultado = "Asignación válida"
+            
+            # Verificar si es asignación de cadena
+            if re.search(r'=\s*"[^"]*"', codigo):
+                resultado = "Asignación de cadena válida"
+            else:
+                resultado = "Asignación válida"
+
+        elif re.match(r"^retornar\s+[a-zA-Z_]\w*;$", codigo):
+            resultado = "Sentencia de retorno válida"
+
+        elif codigo == "{":
+            resultado = "Inicio de bloque"
+
+        elif codigo == "}":
+            resultado = "Fin de bloque"
+
         else:
-            errores_sintacticos.append((i, codigo, "Estructura no reconocida"))
+            # Verificar si hay declaración de cadena sin comillas
+            if codigo.startswith("cadena") and "=" in codigo and '"' not in codigo and codigo.endswith(";"):
+                errores_sintacticos.append((i, codigo, "Error: Las cadenas deben ir entre comillas dobles"))
+            else:
+                # Solo marcar como error si no es una línea vacía después de quitar comentarios
+                if codigo:
+                    errores_sintacticos.append((i, codigo, "Estructura no reconocida"))
             continue
 
-        tabla_sintactico.insert("", tk.END, values=(i, codigo, resultado))
+        tabla_sintactico.insert("", tk.END, values=(i, linea_original, resultado))
+
+    # Verificar llaves sin cerrar al final
+    if pila_llaves:
+        for _ in pila_llaves:
+            errores_sintacticos.append((len(lineas), "{", "Falta cerrar llave '}'"))
 
     for linea, codigo, error in errores_sintacticos:
         tabla_sintactico.insert("", tk.END, values=(linea, codigo, f"❌ {error}"))
 
     messagebox.showinfo("Análisis completado", "El análisis ha finalizado correctamente.")
 
+# [El resto del código permanece igual...]
 #Funcion: Analizar texto desde el editor
 def analizar_editor():
     texto = text_editor.get("1.0", tk.END).strip()
